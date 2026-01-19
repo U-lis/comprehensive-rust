@@ -106,3 +106,180 @@ fn main() {
     takes_u32(y); // This will not compile: y is inferred to be i8
 }
 ```
+
+## Flow Control
+
+### Conditionals
+
+rust 의 if 문은 중괄호로 감싸지 않는다.
+
+```rust
+fn main() {
+    if cond_1 {
+        // do something 1
+    } else if cond_2 {
+        // do something 2
+    } else {
+        // do something else
+    }
+}
+```
+
+또한 if 문 자체를 expression 으로 사용할 수 있다.
+
+```rust
+fn main() {
+    let x = if cond { 1 } else { 2 };  // Trailing `;` is mandatory if the `if` expression is used as an expression
+}
+```
+
+### Iteration
+
+#### while loop
+
+보통 이 경우 while 을 작동시키는 값 자체를 변경하기 때문에 mutable 로 선언하는 것이 필요하다.
+
+```rust
+fn main() {
+    while cond {
+        // do something
+    }
+}
+```
+
+#### for loop
+
+for 의 경우에도 중괄호를 특별히 사용하지 않는다.
+
+```rust
+fn main() {
+    for i in 0..10 {  // 0 ~ 9: [start..end)
+        // do something
+    }
+    // If you want to include the end value, use ..= instead of ..
+    for i in 0..=10 {  // 0 ~ 10
+        // do something
+    }
+}
+```
+
+for 문은 배열을 순회하는 데도 사용된다.
+
+```rust
+fn main() {
+    let arr = [1, 2, 3, 4, 5];
+    for i in arr {
+        // do something
+    }
+}
+```
+
+#### loop
+
+loop은 break 를 만나기 전까지 무한반복된다. 무한루프를 생성할 수 있으니 주의.
+
+```rust
+fn main() {
+    loop { // infinite loop
+        // do something
+        if cond {
+            break; // Only this can stop loop
+        }
+    }
+}
+```
+
+### Loop Control
+
+#### continue
+
+이 뒤의 코드를 무시하고 바로 다음 loop 를 진행한다.
+
+```rust
+fn main() {
+    for i in 0..10 {
+        if i % 2 == 0 {
+            continue;
+        }
+        println!("{}", i)
+    }
+}
+```
+
+#### break
+
+가장 가까운(inner) iteration을 중지한다. 만일 중첩 loop 의 바깥 loop 를 중지하고 싶은 경우 label 과 함께 사용할 수 있다.
+
+```rust
+fn main() {
+    'outer: for i in 0..10 { // outer label
+        for j in 0..10 {
+            if j == 5 {
+                break 'outer; // This will stop the outer loop
+            }
+        }
+    }
+}
+```
+
+### Block
+
+중괄호(`{}`) 로 감싼 표현식들의 모음을 block이라 한다.  
+블록은 이 자체가 타입과 값을 가지는데, 이는 블록의 마지막 표현식을 따른다.  
+block 임을 표현하기 위해서는 마지막 `}` 뒤에 `;`를 추가한다.  
+만일 block의 마지막 expression 이 `;` 로 끝나면 아무것도 넘기는 게 없기 때문에 `()` 을 반환한다. (아래의 main function 참조)
+
+```rust
+fn main() {
+    let z = 13;
+    let x = {
+        let y = 10;
+        println!("y: {y}");
+        z - y
+    }; // x = 3 because z - y is the last expression in the block
+    println!("x: {x}");
+}
+```
+
+### Scope and Shadowing
+
+변수가 유효한 범위는 자신을 포함하는 block 내로 제한된다.  
+변수는 바깥뿐 아니라 현재 scope 도 가릴(shadow) 수 있다.
+
+```rust
+fn main() {
+    let x = 10;
+    { // block limits scope of x inside this block
+        let x = 20; // Shadows outer x
+        println!("x: {x}"); // 20
+
+        let x = true; // Shadows inner x
+        println!("x: {x}"); // true
+    } // Scope of inner x ends here
+    println!("x: {x}"); // 10: x is out of scope here
+}
+```
+
+### Functions
+
+함수는 python과 유사하게 인자 이름 다음에 타입을 적고, signature 다음에 return type 을 작성한다.  
+rust 의 함수는 overloading 을 지원하지 않는다. 하나의 함수는 하나의 구현체만 존재하며, 항상 고정된 개수의 매개변수를 받는다. 대신 generic 을 인자로 받을 수는 있다.  
+rust 의 함수 인자는 기본값을 지원하지 않는다.
+
+```rust
+fn add(x: i32, y: i32) -> i32 {
+    x + y
+}
+fn main() {
+    println!("10 + 20 = {}", add(10, 20));
+}
+```
+
+### Macro
+
+compile 도중에 rust code로 확장되는 구문. `!`가 뒤에 있는 것으로 macro 임을 구분한다. `println!` 이 대표적이다.
+
+- `todo!()` : 아직 구현되지 않은 할 일을 표기. 이 구문을 실행하면 패닉
+- `unreachable!()` : 도달 불능 코드 표기. 이 구문을 실행하면 패닉
+- `unimplemented!()` : 미구현 상태임을 표기. 이 구문을 실행하면 패닉
+- `assert!()` : 단언문. 실패하면 패닉
