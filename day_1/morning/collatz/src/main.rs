@@ -3,9 +3,28 @@
 */
 /// `n`에서 시작하는 콜라츠 수열의 길이를 결정합니다.
 fn collatz_length(mut n: i32) -> u32 {
-    todo!("Implement this")
+    let mut len = 1;
+    while n > 1 {
+        n = if n % 2 == 0 { n / 2 } else { 3 * n + 1 };
+        len += 1;
+    }
+    len
+}
+
+fn collatz_length_recursive(n: i32) -> u32 {
+    if n == 1 {
+        return 1;
+    }
+
+    if n % 2 == 0 {
+        1 + collatz_length_recursive(n / 2)
+    } else {
+        1 + collatz_length_recursive(3 * n + 1)
+    }
 }
 
 fn main() {
-    todo!("Implement this")
+    let n = 10239;
+    println!("collatz_length({}) = {}", n, collatz_length(n));
+    println!("collatz_length_recursive({}) = {}", n, collatz_length_recursive(n));
 }
