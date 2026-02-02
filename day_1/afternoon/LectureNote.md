@@ -231,8 +231,10 @@ fn main() {
 ```
 
 ### Reference Validity
+
 Rust 에서는 reference 의 안전한 사용을 위한 몇가지 규칙을 가지고 있다. 그 중 하나는 reference 는 null 이 될 수 없다는 것. null pointer 가 있는 것과 대조적.  
-그래서 rust 에서는 null check 없이 reference 를 사용할 수 있다.  
+그래서 rust 에서는 null check 없이 reference 를 사용할 수 있다.
+
 ```rust
 fn main() {
     let ref_x = {
@@ -243,5 +245,155 @@ fn main() {
     dbg!(ref_x);
 }
 ```
+
 위 코드를 보면 ref_x 는 x 의 reference 여야 한다. 그러나 x 의 scope 는 `{}` 안쪽에만 존재하기 때문에 결과적으로 ref_x 는 유효한 reference 를 생성하지 못한다.  
 이게 단순 pointer 였다면 x 의 scope 에 상관 없이 메모리 주소는 ref_x 에 남아 접근할 수 있었을 것이다. 이는 중대한 차이.
+
+## User-defined Type
+
+### Named Struct
+
+C, C++ 처럼 custom struct 를 만들 수 있다.  
+C 와 달리 typedef 는 필요없고 struct 만 있으면 된다.  
+C++와 달리 struct 간의 상속은 없다.  
+struct field 는 default value 를 지원하지 않는다. trait 에 관련된 게 있는데 나중에.
+
+```rust
+struct Person {
+    name: String,
+    age: u8,
+} // no semicolon
+
+// & 를 이용해 불변 reference 로 안전한 사용
+fn describe(p: &Person) {
+    println!("{p.name} is {p.age} years old.");
+}
+
+fn main() {
+    let mut p = Person {
+        name: String::from("Alice"),
+        age: 20,
+    };
+    describe(&p);
+
+    p.age = 21;
+    describe(&p);
+
+    let name = String::from("Bob");
+    let age = 22;
+    let p2 = Person { name, age }; // 변수명이 struct field 와 같은 이름인 경우 바로 사용 가능.
+    describe(&p2);
+}
+```
+이미 있는 struct instance 에서 값을 가져오되 explicit 만 덮어쓸 수도 있다.
+
+```rust
+struct Person {
+    name: String,
+    age: u8,
+}
+
+fn main() {
+    let p1 = Person{name: String::from("Alice"), age: 20};
+    let p2 = Person{ name: String::from("Bob"), ..p1}; // Use age from p1
+}
+```
+
+### Tuple Struct
+field name 이 중요하지 않은 경우 tuple struct 를 사용할 수 있다.
+```rust
+struct Point(i32, i32);
+
+fn main() {
+    let p = Point(13, 17);
+    println!("{p.0}, {p.1}");
+}
+```
+
+single field tuple structs 는 종종 type wrapper 처럼 사용된다.
+```rust
+struct Wrapper(i32);
+
+fn calc(inp: Wrapper) -> Wrapper {
+    todo!("do something")
+}
+
+fn main() {
+    let w = Wrapper(13);
+    println!("{w.0}");
+}
+```
+
+### Enum
+enum 을 사용하면 정해진 variation 을 가진 값들을 모아 사용할 수 있다.  
+enum value 에 접근할 때는 `::` 을 사용한다.  
+
+```rust
+enum Direction {
+    Left,
+    Right,
+}
+
+// 여러가지가 enum 에 들어갈 수 있다. 알아서 어떤건지 찾아준다.
+enum PlayerMove {
+    Pass, // Simple variant
+    Move(Direction), // Tuple variant
+    Teleport {x: u32, y:u32} // Struct variant
+}
+
+fn main() {
+    let dir = Direction::Left;
+    let player_move: PlayerMove = PlayerMove::Move(dir);
+    println!("go to {player_move:?}");
+}
+```
+
+### Type Alias
+alias 를 이용해 다른 타입에 대한 이름을 지을 수 있다. 양쪽 이름은 서로를 오갈 수 있다.  
+C 의 typedef 와 유사하다고 볼 수 있다.
+```rust
+enum Direction {
+    Left,
+    Right,
+}
+type Dir = Direction;
+
+// 복잡한 타입에 유용함.
+use std::cell::RefCell;
+use std::sync::{Arc, RwLock};
+type PlayerInventory = RwLock<Vec<Arc<RefCell<Item>>>>;
+```
+
+### Const
+const compile time 에 평가되어서 code 에 inline 된다. 당연히 수정 안된다.
+```rust
+const DIGEST_SIZE: usize = 3;
+const FILL_VALUE: u8 = calculate_fil_value(); // const function 은 compile time 에 불려서 평가된다.
+
+// const fn 은 runtime 에 부를 수 있다.
+const fn calculate_fil_value() -> u8 {
+    if DIGEST_SIZE < 10 {42} else {13}
+}
+
+fn compute_digest(text: &str) -> [u8; DIGEST_SIZE] {
+    let mut digest = [FILL_VALUE; DIGEST_SIZE];
+    for (idx, &b) in text.as_bytes().iter().enumerate() {
+        digest[idx % DIGEST_SIZE] = digest[idx % DIGEST_SIZE].wrapping_add(b);
+    }
+    digest
+}
+
+fn main() {
+    let digest = compute_digest("Hello");
+    println!("digest: {digest:?}");
+}
+```
+
+### Static
+static 은 program 내내 살아서 유지된다. 그래서 변경도 없다.  
+```rust
+static BANNER: &str = "Hello, World";
+fn main() {
+    println!("{BANNER}");
+}
+```
