@@ -237,4 +237,210 @@ fn main() {
     println!("result: {:?}", hex_or_die_trying(Some(String::from("AXa"))));
 }
 ```
-rust 에서는 이런 식으로 let else 를 이용해 early return 하는 식의 flow 를 많이 사용한다.  
+
+rust 에서는 이런 식으로 let else 를 이용해 early return 하는 식의 flow 를 많이 사용한다.
+
+# Methods and Traits
+
+## Methods
+
+Rust 에서는 `impl` 을 이용해 새로 만든 타입(struct?) 내부의 함수를 구현한다. member 와 method 가 따로 있음.
+
+```rust
+struct CarRace {
+    name: String,
+    laps: Vec<i32>, // list of i32 도 될 것 같은데 vec 을 쓴 이유는 모르겠네
+}
+
+impl CarRace { // impl로 struct 함수만 따로 구현.
+    fn new(name: &str) -> Self { // &xx 식으로 받아주는 게 없는 경우(no receiver) static method.
+        Self { name: String::from(name), laps: Vec::new() }
+    } // 보통 이 패턴은 생성자로 사용한다.
+
+    fn add_lap(&mut self, lap: i32) {
+        // self, 자기 지신을 mutable 하게 빌려옴. 다시 원본 self가 받아가기 때문에 이어서 사용 가능.
+        self.laps.push(lap);
+    }
+
+    fn print_labs(&self) {
+        // read-only, immutable 하게 빌려옴. 이것도 self 가 받아가기 때문에 이어서 사용 가능
+        println!("Recorded {} laps for {}", self.laps.len(), self.name);
+        for (idx, lap) in self.labs.iter().enumerate() {
+            println!("Lap {}: {} sec", idx + 1, lap);
+        }
+    }
+
+    fn finish(self) {
+        // self 자체를 가져옴. 이제 여기에서 self 객체를 관리하기 때문에 명시적으로 관리 주체를 정해주지 않는 이상 여기에서 객체가 사라짐.
+        let total = self.laps.iter.sum();
+        println!("Race {} has been finished. Total time: {}", self.name, total);
+    } // finish() 를 호출한 이후 instance사용 불가
+}
+
+fn main() {
+    let race = CarRace::new("2025 Monaco Grand Prix");
+    race.add_lap(10);
+    race.add_lap(20);
+    race.print_labs();
+    race.finish();
+    // race.add_lap(30); // 이 코드는 작동하지 않는다. race 는 finish() 에서 해제되었기 때문.
+
+    /*
+    사실 `CarRace::add_lap(&mut race, 20)` 와 같이 부를 수도 있다.
+    */
+}
+```
+
+`Self` 는 사실 impl 하는 type(struct, enum) 에 대한 type alias 이다. 그리고 이건 impl 블록 안 어디서든 쓸 수 있다.  
+`&self` 와 `self` 의 차이에 대해 잘 알이두는 것이 중요. &식으로 borrow 해온 경우 receiver 가 있다고 이야기함.
+
+## Traits
+
+trait 는 interface 와 같은 추상화 layer 를 이야기한다.
+
+```rust
+trait Pet {
+    // read-only self를 가져와서 String을 반환함.
+    fn talk(&self) -> String;
+
+    // read-only self 를 가져요 사용하고, 반환 없음. 단, receiver 는 있기 때문에 instance 가 해제되지 않음.
+    fn greet(&self);
+}
+```
+
+현재 trait 에서는 method interface 만 정의할 수 있고, member를 정의할 수는 없다. 그래서 보통 trait 로 getter/setter 를 만들어서 사용하는 것이 일반적.  
+대신 이렇게 하면 코드가 괜히 많아지는 단점이 있다.
+
+### Implementing traits
+
+trait 와 struct 가 있다. struct 를 위한 trait 를 구현하려면 다음과 같이 한다
+
+```rust
+trait Action {
+    fn go(&mut self);
+    fn stop(&mut self);
+    fn status(&self);
+}
+
+struct Car {
+    tpe: String,
+    status: String,
+}
+
+impl Action for Car { // impl [trait] for [type]
+    fn go(&mut self) {
+        self.status = String::from("Go");
+    }
+
+    fn stop(&mut self) {
+        self.status = String::from("Stop");
+    }
+
+    fn status(&self) {
+        println!("Car status: {}", self.status);
+    }
+}
+```
+
+한 type을 위해 여러 개의 trait 를 구현해야 하는 경우 여러 개의 `impl X for Y` 를 만들어야 한다. 한번에 여러 개의 impl 을 하는 코드를 작성할 수는 없다.
+
+### Supertraits
+
+어떤 trait는 특정 trait의 구현을 요구할 수 있다. 이렇게 하위 trait 을 구현해야 하는 trait을 supertrait 이라 한다.  
+해당되는 모든 trait 에 대해서 전부 다 구현해야 사용할 수 있다.
+
+```rust
+trait Animal {
+    fn leg_count(&self) -> u32;
+}
+
+trait Pet: Animal { // Pet 은 Animal 을 꼭 구현해야 한다.
+    fn name(&self) -> String;
+}
+
+struct Dog(String); // Tuple struct. member 의 이름을 짓지 않고 tuple 식으로 순서로 접근.
+
+impl Animal for Dog { // Animal 따로 한번 구현하고
+    fn leg_count(&self) -> u32 {
+        4
+    }
+}
+
+impl Pet for Dog { // Pet 따로 한번 구현하고
+    fn name(&self) -> String {
+        self.0.clone() // Dog(String) 이었으니 self.0 하면 첫번째 멤버인 String 에 접근. 
+        /*
+        clone() 을 하는 이유 : self.0은 &self에서 꺼내오기 때문에 borrow type (&String)임.
+        그런데 return type 은 소유권을 따로 가지고 있는 String type 임.
+        그래서 clone() 을 통해 소유권이 분리된 새 변수를 만들어서 반환하는 것. 참조 반환으로 충분하면 이렇게 하면 됨.
+        fn name(&self) -> &str {
+           &self.0
+        }
+        */
+    }
+}
+```
+
+위 예시에서 Animal이 supertrait 이다. Pet 을 구현하려면 super인 Animal 을 꼭 구현해야 함.  
+하지만 Animal 을 구현하기 위해서 Pet 을 꼭 구현할 필요는 없음. Pet 아닌 Animal은 존재 가능.
+
+### Associated Types
+
+associated type 은 trait impl 에서 사용되는 type placeholder 이다.
+
+```rust
+struct Meter(i32);
+struct MeterSq(i32);
+
+trait Multiply {
+    type Output; // Output 이라는 type을 만들어서
+    fn multiply(&self, other: &Self) -> Self::Output; // multiply 에서 그걸 반환한다
+}
+
+impl Multiply for Meter {
+    type Output = MeterSq; // MeterSq 를 Output 으로 쓰기로 했다.
+    // 아니면 Output 에 다른 타입을 원하는대로 지정할 수 있다. 여튼 그게 ↓에서 잘 쓰이기만 하면 됨.
+    fn multiply(&self, other: &Self) -> Self::Output {
+        MeterSq(self.0 * other.0) // MeterSq 를 반환하면 Self::Output 을 만족
+    }
+}
+```
+
+associated type은 output type이라고 많이 불린다. ↑ 처럼 많이 쓰나봄.
+assoc. type을 잘 따져야 하는 곳은 impl 이지 사용처가 아님.
+
+## Deriving
+
+어떤 trait는 자동 impl할 수 있다.
+
+```rust
+#[derive(Debug, Clone, Default)] // derive 를 이용해 필요한 것들을 간편하게 넣어 쓸 수 있다.
+struct Player {
+    name: String,
+    str: u8,
+    hp: u8,
+}
+
+fn main() {
+    let p1 = Player::default(); // Default 를 derive 해서 default() constructor를 쓸 수 있게 됨. (auto impl)
+    let mut p2 = p1.clone(); // Clone 을 derive해서 clone() method를 auto impl 함.
+    p2.name = String.from("Name");
+    println!("{p1:?} vs. {p2:?}"); // Debug derive 가 println!({:?}) 를 할 수 있게 해줌.
+}
+```
+
+derive 를 이용하면 보일러플레이트같이 자명하고 귀찮은 작업을 간결하게 할 수 있다. `clone()` 만 해도 직접 만들려면 이렇게 해야 된다;
+
+```rust
+impl Clone for Player {
+    fn clone(&self) -> Self {
+        Player {
+            name: self.name.clone(),
+            str: self.str.clone(),
+            hp: self.hp.clone(),
+        }
+    }
+}
+```
+
+모든 clone필요한 struct 들에 대해 이걸 하느니 derive() 한번 만들어서 쓰는게 좋다.
