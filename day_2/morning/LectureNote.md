@@ -444,3 +444,163 @@ impl Clone for Player {
 ```
 
 모든 clone필요한 struct 들에 대해 이걸 하느니 derive() 한번 만들어서 쓰는게 좋다.
+
+# Generics
+
+## Generic Functions
+rust 에서는 알고리즘 또는 자료구조를 추상화할 수 있도록 하는 generic 을 지원한다. 예를 들어서 type 을 추상화한 generic 함수를 이렇게 만들 수 있다.
+
+```rust
+// pick 이 어떤 타입을 가지는 지 미리 정하지 않아도 된다.
+fn pick<T>(cond: bool, left: T, right: T) -> T {
+    if cond {left} else {right}
+}
+
+// 아니면 이렇게 따로 만들어야 된다.
+fn pick_int(cond: bool, left: i32, right: i32) -> i32 {
+    if cond {left} else {right}
+}
+
+fn pick_char(cond: bool, left: char, right: char) -> char {
+    if cond {left} else {right}
+}
+// 그럼 타입이 추가될 때마다 또 이걸 계속 만들어야 한다.
+
+fn main() {
+    // pick int
+    println!("pick a number: {:?}", pick_int(true, 2, 3));
+    println!("pick a number: {:?}", pick(true, 2, 3));
+    
+    // pick string
+    println!("pick a string: {:?}", pick_char(false, 'L', 'R'));
+    println!("pick a string: {:?}", pick(false, 'L', 'R'));
+}
+```
+Rust는 pick 의 T 를 함수 인자를 보고 추론한다.  
+물론 T자리에 사용자 정의 타입이 들어가도 된다. struct같은거.  
+rust 는 C++ template 과 달리 generic function 을 일부 compile 한다.  
+만일 위 코드를 `if cond {left + right} else {right}` 로 변경하면 int 만 넣을 생각이었어도 compile time error 가 발생한다.  
+T 가 뭔지 알 수 없기 때문에 함부로 + 를 허락하지 않는 것.
+
+generic function 은 compile time 에 사용처를 보고 사용처에 맞는 별개 함수를 생성한다. 직접 만든 pick_i32, pick_char 같은 것들.  
+caller 입장에서는 type까지 완벽한 전용 함수가 있는 셈이기 때문에 runtime 에 T 에 대한 추론이나 검사가 필요 없다.  
+대신 type 이 많아지면 여러개의 함수가 만들어져야 한다.  
+
+### NOTE : ownership 에 대한 간단한 부연
+
+위 코드에서 222, 333, 'L', 'R' 은 & 없이 바로 자료형을 받는다.  
+(실제로는 primitive 여서 copy되긴 하지만) 그러면 전달된 값들의 ownership 은 pick 으로 넘어간다.  
+그리고 둘 중 선택된 것은 caller 에게 ownership 이 넘어가고, 선택되지 않은 것은 더 쓰이는 곳이 없기 때문에 pick 이 종료되면 사라진다.  
+만일 변수를 전달했다면 전달한 변수 중 하나는 pick() 이후 쓸 수 없게 된다.  
+이를 방지하기 위해서 & 참조를 받도록 해야 하는데 generic 에서는 &T 가 아닌 &'a T 타입이 필요하다.  
+상세한 내용은 lifetime 에서...
+
+
+## Trait Bounds
+generic을 사용하다 보면 종종 T가 어떤 trait 를 구현하고 있어야 하는 경우가 있다.  
+예를 들어 a.clone() 을 generic function 안에서 사용하려면 T가 Clone trait 를 구현하고 있어야 한다.  
+이런 식으로 어떤 trait가 필수인 generic 의 경우 `T: Trait` 로 필수 구현 trait 를 제한할 수 있다.  
+하나의 T가 여러 개의 trait 를 구현해야 한다면 `T: Tr1 + Tr2` 식으로 할 수 있다.
+```rust
+fn duplicate<T: Clone>(t: T) -> (T, T) {
+    (a.clone(), a.clone())
+}
+
+struct NotCloneable;
+
+fn main() {
+    let clonable = String::from("Hello");
+    let clone = duplicate(clonable);
+    
+    let not_cloneable = NotCloneable;
+    
+    // Clone이 implement 되지 않았다고 에러
+    let not_working = duplicate(not_cloneable);
+}
+```
+위 함수는 where 절을 이용해 다음과 같이 만들 수 있다. 좀 더 직관적으로 읽을 수 있다.
+```rust
+fn duplicate<T>(a: T) -> (T, T) 
+where T: Clone,
+{
+    (a.clone(), a.clone())
+}
+```
+rust 의 generic은 (아직) type 지정을 지원하지 않는다. 예를 들어서 `duplicate(a: u32)` 와 같이 type 이 특정된 함수를 만들 수 없다.  
+rust generic은 알아서 type 지정 버전 함수들을 만들기 때문에 generic에 대한 수동 구현?오버라이딩? 은 할 수 없다.
+
+## Generic Data Types
+generic을 함수 인자 뿐만 아닌 struct 의 타입을 추상화하기 위해 사용할 수 있다.  `logging_trait` 연습문제를 참고할 수 있다.
+```rust
+pub trait Logger {
+    fn log(&self, verbosity: u8, message: &str);
+}
+
+struct StderrLogger;
+
+impl Logger for StderrLogger {
+    fn log(&self, verbosity: u8, message: &str) {
+        eprintln!("verbosity={verbosity}: {message}");
+    }
+}
+
+struct VerbosityFilter<L> {
+    max_verbosity: u8,
+    inner: L, // L 이 어떤 타입인지 지금은 모른다. generic 으로 만들어둠.
+}
+
+/*
+  use generic: <L>
+  impl trait: Logger
+  generic type: VerbosityFilter<L>
+*/ 
+impl<L> Logger for VerbosityFilter<L>
+where L: Logger {
+    fn log(&self, verbosity: u8, message: &str) {
+        if verbosity <= self.max_verbosity {
+            self.inner.log(verbosity, message);
+        }
+    }
+}
+```
+1. trait bound를 verbosityFilter 에 쓸 수 있다. `struct VerbosityFilter<L: Logger>`  
+   하지만 보통 trait bound 는 impl block 에서 쓰는 것이 관례.
+2. `impl VerbosityFilter<StrerrLogger>` 식으로 쓸 수 있다. `VerbosityFilter<L>` 중에 L 이 StderrLogger 인 경우에 대한 구현.
+   중요한 것은 이미 generic 이 구현되어 있다면 `VerbosityFilter<StderrLogger>` 에서 `fn log()` 를 구현할 수 없다는 것. 중복구현으로 에러.
+   1. `impl <L> Logger for VerbosityFilter<L>` : generic에 대한 trait 구현. 모든 generic 에 대해 이 코드를 공유한다.
+   2. `impl VerbosityFilter<StderrLogger>` : generic L이 StderrLogger 인 경우에만 들고 있고자 하는 fn을 구현.
+
+## Generic Traits
+Trait 도 generic 할 수 있다. trait 안의 fn 이 받는 인자 타입을 사용할 때 정할 수 있다.
+```rust
+// Sized is supertrait of From
+pub trait From<T>: Sized {
+    fn from(value: T) -> Self;
+}
+
+#[derive(Debug)]
+struct Foo(String);
+
+// Foo 를 output type, u32(T) 를 input type 으로 생각하면 좋다.
+impl From<u32> for Foo {
+    fn from(from: u32) -> Foo {
+        Foo(format!("Convert from integer: {from}"))
+    }
+}
+
+impl From<bool> for Foo {
+    fn from(from: bool) -> Foo {
+        Foo(format!("Convert from boolean: {from}"))
+    }
+}
+
+fn main() {
+   let from_int = Foo::from(123); // From<u32> 를 사용
+   let from_bool = Foo::from(true); // From<bool> 를 사용
+   dbg!(from_int);
+   dbg!(from_bool);
+}
+```
+trait 를 구현할 수 있는 케이스는 N 개 있겠지만, 이걸 전부 다 구현할 필요는 없다. 실제 사용되는 것만 impl 하면 됨.  
+그말인즉슨, `Foo::from("Hello")` 같은걸 쓰면 compile error 가 발생. `impl Foo<&str>` 이 없기 때문.  
+사실 rust 는 generic trait에 대해 T 한 타입 당 최대 한개까지의 구현만 허락함.
