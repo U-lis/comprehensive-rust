@@ -573,7 +573,7 @@ where L: Logger {
 ## Generic Traits
 Trait 도 generic 할 수 있다. trait 안의 fn 이 받는 인자 타입을 사용할 때 정할 수 있다.
 ```rust
-// Sized is supertrait of From
+// Sized is supertrait of From, not <T>
 pub trait From<T>: Sized {
     fn from(value: T) -> Self;
 }
@@ -604,3 +604,102 @@ fn main() {
 trait 를 구현할 수 있는 케이스는 N 개 있겠지만, 이걸 전부 다 구현할 필요는 없다. 실제 사용되는 것만 impl 하면 됨.  
 그말인즉슨, `Foo::from("Hello")` 같은걸 쓰면 compile error 가 발생. `impl Foo<&str>` 이 없기 때문.  
 사실 rust 는 generic trait에 대해 T 한 타입 당 최대 한개까지의 구현만 허락함.
+
+## impl Trait
+[Trait bounds](#trait-bounds) 처럼 function args 와 return values 에 `impl Trait` 구문을 사용할 수 있다.  
+이는 해당 변수/type 이 특정 trait 를 반드시 impl 해야 한다는 제약을 뜻한다.
+
+```rust
+//   fn add_42_millions<T: Into<i32>>(x: T) -> i32 {
+fn add_42(x: impl Into<i32>) -> i32 {
+    x.into() + 42
+}
+/* 일반적으로 사용하는 패턴. x 안의 impl Trait는 syntactic sugar
+fn add_42<T: Into<i32>>(x:T) {
+    x.into() + 42
+}
+*/
+
+/*
+제약이 많은 경우 where 가 가독성이 좋아서 선호됨
+fn add_42<T>(x: T) where T: Into<i32> {
+    x.into() + 42
+}
+*/
+
+fn pair_of(x: u32) -> impl std::fmt::Debug {
+    (x+1, x-1)
+}
+
+fn main() {
+    let many = add_42(42_i8);
+   dbg!(many);
+   let many_more = add_42(10_000);
+   dbg!(many_more);
+   let debuggable = pair_of(123);
+   dbg!(debuggable);
+}
+```
+struct 를 따로 만들거나 뭐라고 이름짓기 애매한 곳에 넣어서 inline으로 trait impl 제약을 걸 수 있다.  
+return type 에 쓰면 type name 을 T같이 지정하지 않고 impl Trait 만으로 퉁칠 수 있다. public API 의 내부 type을 공개하고 싶지 않을 때 저렇게 가릴 수 있다.  
+대신 return구문에서의 타입 추론은 까다롭다. 참고로 위 pair_of() 의 반환값 타입은 걍 `impl Debug` 이다.
+
+## dyn Trait
+generic을 통한 trait 의 정적 dispatch 이외에도, trait object 를 이용해 동적 dispatch를 할 수도 있다.  
+dyn Trait 를 사용하면 vtable 을 이용해서 동적으로 메모리를 사용할 수 있다는 장점이 있다. 원래 impl Trait 하면 그거 사용하는 타입대로 개별 함수를 미리 다 만들었었는데 dyn 으로 하면 안그럼.
+
+```rust
+use std::thread::yield_now;
+
+struct Dog {
+   name: String,
+   age: i8,
+}
+
+struct Cat {
+   lives: i8,
+}
+
+trait Pet {
+   fn talk(&self) -> String;
+}
+
+impl Pet for Dog {
+   fn talk(&self) -> String {
+      format!("Woof, my name is {}", self.name);
+   }
+}
+
+impl Pet for Cat {
+   fn talk(&self) -> String {
+      String::from("Meow");
+   }
+}
+
+// static generic. This makes two copies of the function into stack memory.
+fn generic(pet: &impl Pet) -> String {
+   println!("Hello, how are you? {}", pet.talk());
+}
+
+// dynamic generic. This makes one copy of the function into heap memory.
+fn dynamic(pet: &dyn Pet) -> String {
+   println!("Hello, who are you? {}", pet.talk());
+}
+
+fn main() {
+   let cat = Cat { lives: 9 };
+   let dog = Dog { name: String::from("dog"), age: 5 };
+
+   // Use static dispatch.
+   generic(&cat);
+   generic(&dog);
+ 
+   // Use dynamic dispatch.
+   dynamic(&cat);
+   dynamic(&dog);
+}
+```
+`&dyn Pet` 은 "fat pointer" 라고 불린다. 실제 generic 을 구현한 타입을 가리키는 포인터와 vtable 내의 implementation을 가리키는 포인터 두개를 가지고 있음.  
+`dynamic(&dog)` 를 호츨하면 data pointer 는 dog 를 가리키고, vtable pointer 는 Dog 가 Pet을 구현한 곳을 가리킴. 여기에서 호출되는 함수를 찾아서 실행.  
+&dyn Pet은 인자로 넘어온 pet 이 실제로 어떤 type(Dog? Cat?) 인지 알 필요가 없다. 대신 Pet trait 가 구현되었다는 것을 알기 때문에 해당 기능을 사용하면 알아서 type 에 맞는 impl을 가져다 수행함.  
+이런 식으로 dyn Trait 는 compile time에 type 을 특정하지 않고, type 에 대해 알 필요가 없기 때문에 type-erased 로 이야기한다.  
